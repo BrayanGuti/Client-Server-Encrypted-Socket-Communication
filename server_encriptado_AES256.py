@@ -1,29 +1,40 @@
 import socket
+import threading
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 import base64
 
+def handle_client(conn):
+    key = 'clave_secreta_muy_segura_de_256_'  # 16 bytes exactos    
+    while True:
+        data = conn.recv(1024).decode()  # Recibir datos del cliente
+        if not data:
+            break
+        decrypt_msg = decrypt_message(key, str(data))
+        print("De usuario conectado: " + str(decrypt_msg))
+        response = input(' -> ')  # Pedir mensaje de respuesta
+        encrypt_response = encrypt_message(key, response)
+        conn.send(encrypt_response.encode())  # Enviar respuesta al cliente
 
-def client_program():
-    host = '172.20.10.4'  # Cambiado a localhost para ejecutar en la misma máquina
-    port = 5000  # Número de puerto del servidor
+    conn.close()  # Cerrar la conexión con el cliente actual
 
-    client_socket = socket.socket()  # Instanciar socket
-    client_socket.connect((host, port))  # Conectar al servidor
-    key = 'clave_secreta_muy_segura_de_256_'  # Clave de 16 bytes
-    message = input(" -> ")  # Tomar entrada del usuario
+def server_program():
+    host = '0.0.0.0'  # Obtiene el nombre del host
+    port = 5000  # Puerto a usar
 
-    while message.lower().strip() != 'bye':
-        encrypted = encrypt_message(key, message)
-        client_socket.send(encrypted.encode())  # Enviar mensaje
-        data = client_socket.recv(1024).decode()  # Recibir respuesta
+    server_socket = socket.socket()  
+    server_socket.bind((host, port))  
+    server_socket.listen(2)  # Escucha hasta 2 clientes simultáneamente
 
-        decrypt_data = decrypt_message(key, data) # Desencriptar mensaje
-        print('Recibido del servidor: ' + decrypt_data)  # Mostrar en terminal
+    print(f"Servidor escuchando en {host}:{port}")
 
-        message = input(" -> ")  # Volver a tomar entrada
-
-    client_socket.close()  # Cerrar la conexión
+    while True:
+        conn, address = server_socket.accept()  # Acepta nueva conexión
+        print("Conexión desde: " + str(address))
+        
+        # Crear un hilo para manejar la conexión del cliente
+        client_thread = threading.Thread(target=handle_client, args=(conn,))
+        client_thread.start()
 
 
 
@@ -68,5 +79,4 @@ def decrypt_message(key, encrypted_message):
     return decrypted_message.decode('utf-8')
 
 if __name__ == '__main__':
-    client_program()
-
+    server_program()

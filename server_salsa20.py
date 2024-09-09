@@ -3,6 +3,8 @@ import threading
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 import base64
+from Crypto.Cipher import Salsa20
+import base64
 
 def handle_client(conn):
     key = 'clave_secreta_muy_segura_de_256_'  # 16 bytes exactos    
@@ -10,10 +12,10 @@ def handle_client(conn):
         data = conn.recv(1024).decode()  # Recibir datos del cliente
         if not data:
             break
-        decrypt_msg = decrypt_message(key, str(data)) # Desencriptar mensaje
+        decrypt_msg = decrypt_message_salsa20(key, str(data))
         print("De usuario conectado: " + str(decrypt_msg))
         response = input(' -> ')  # Pedir mensaje de respuesta
-        encrypt_response = encrypt_message(key, response) # Encriptar la respuesta
+        encrypt_response = encrypt_message_salsa20(key, response)
         conn.send(encrypt_response.encode())  # Enviar respuesta al cliente
 
     conn.close()  # Cerrar la conexión con el cliente actual
@@ -37,46 +39,41 @@ def server_program():
         client_thread.start()
 
 
-
-# Función para encriptar un mensaje
-def encrypt_message(key, message):
-    # Convertir la clave a bytes si es necesario
+# Función para encriptar un mensaje usando Salsa20
+def encrypt_message_salsa20(key, message):
+    # Convertir la clave a bytes (debe ser de 32 bytes para Salsa20)
     key = key.encode('utf-8')
     
-    # Generar un vector de inicialización (IV) de 16 bytes
-    iv = b'1234567890123456'  # IV fijo de 16 bytes (no recomendado en producción)
+    # Generar un nonce aleatorio de 8 bytes
+    cipher = Salsa20.new(key=key)
+    nonce = cipher.nonce
     
-    # Crear el cifrador AES en modo CBC
-    cipher = AES.new(key, AES.MODE_CBC, iv)
+    # Cifrar el mensaje
+    encrypted_message = cipher.encrypt(message.encode('utf-8'))
     
-    # Pad del mensaje para que sea múltiplo de 16 bytes
-    padded_message = pad(message.encode(), AES.block_size)
-    
-    # Encriptar el mensaje
-    encrypted_message = cipher.encrypt(padded_message)
-    
-    # Combinar IV y mensaje encriptado
-    return base64.b64encode(iv + encrypted_message).decode('utf-8')
+    # Devolver el mensaje cifrado junto con el nonce
+    return base64.b64encode(nonce + encrypted_message).decode('utf-8')
 
-# Función para desencriptar un mensaje
-def decrypt_message(key, encrypted_message):
-    # Convertir la clave a bytes si es necesario
+# Función para desencriptar un mensaje usando Salsa20
+def decrypt_message_salsa20(key, encrypted_message):
+    # Convertir la clave a bytes
     key = key.encode('utf-8')
     
     # Decodificar el mensaje en base64
     encrypted_message = base64.b64decode(encrypted_message)
     
-    # Separar el IV de los datos encriptados
-    iv = encrypted_message[:16]
-    encrypted_message = encrypted_message[16:]
+    # Extraer el nonce (los primeros 8 bytes)
+    nonce = encrypted_message[:8]
+    ciphertext = encrypted_message[8:]
     
-    # Crear el descifrador AES en modo CBC
-    cipher = AES.new(key, AES.MODE_CBC, iv)
+    # Crear el descifrador Salsa20 con el mismo nonce
+    cipher = Salsa20.new(key=key, nonce=nonce)
     
-    # Desencriptar y despadear el mensaje
-    decrypted_message = unpad(cipher.decrypt(encrypted_message), AES.block_size)
+    # Desencriptar el mensaje
+    decrypted_message = cipher.decrypt(ciphertext)
     
     return decrypted_message.decode('utf-8')
+
 
 if __name__ == '__main__':
     server_program()
